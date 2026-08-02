@@ -62,6 +62,7 @@
       filter:blur(70px);
       opacity:.35;
       animation:orbMove 14s ease-in-out infinite;
+      will-change:transform;
     }
 
     .ambient::before{
@@ -118,6 +119,7 @@
       filter:brightness(.92) contrast(1.05) saturate(.96) grayscale(0%);
       animation:heroPhoto 4.6s cubic-bezier(.22,.61,.36,1) forwards;
       z-index:0;
+      will-change:transform, filter;
     }
 
     @keyframes heroPhoto{
@@ -200,6 +202,7 @@
       transform:translateX(-120%) rotate(7deg);
       animation:shinePass 5.8s ease-in-out infinite;
       animation-delay:3.4s;
+      will-change:transform;
     }
 
     @keyframes shinePass{
@@ -526,6 +529,7 @@
       transform:translateY(18px);
       filter:blur(8px);
       animation:revealUp 1.1s cubic-bezier(.22,.61,.36,1) forwards;
+      will-change:transform, opacity, filter;
     }
 
     .r1{animation-delay:1.8s;}
@@ -670,7 +674,7 @@
   </style>
 </head>
 <body>
-  <audio id="bgm" src="1.mp3" preload="auto" loop playsinline autoplay></audio>
+  <audio id="bgm" src="1.mp3" preload="auto" loop playsinline></audio>
 
   <div class="ambient"></div>
 
@@ -767,39 +771,32 @@
     const letterModal = document.getElementById('letterModal');
     const closeLetter = document.getElementById('closeLetter');
 
-    let triedAutoPlay = false;
+    let audioUnlocked = false;
 
+    // تابع اصلی برای پخش موزیک
     async function playAudio() {
+      if (audioUnlocked) return;
       try {
         audio.volume = 1;
         await audio.play();
         musicBtn.classList.add('playing');
+        audioUnlocked = true;
+        // پاک کردن EventListenerها بعد از اولین پخش موفقیت‌آمیز جهت بهینه‌سازی حافظه
+        removeAllInteractions();
       } catch (err) {
-        musicBtn.classList.remove('playing');
+        console.log("پخش خودکار توسط مرورگر مسدود شد؛ منتظر اولین کلیک کاربر...");
       }
     }
 
-    async function autoPlayMusic() {
-      if (triedAutoPlay) return;
-      triedAutoPlay = true;
-      await playAudio();
-    }
-
-    function enableOnFirstInteraction() {
-      const unlock = async () => {
-        await playAudio();
-        window.removeEventListener('touchstart', unlock);
-        window.removeEventListener('click', unlock);
-        window.removeEventListener('scroll', unlock);
-      };
-
-      window.addEventListener('touchstart', unlock, { once:true, passive:true });
-      window.addEventListener('click', unlock, { once:true });
-      window.addEventListener('scroll', unlock, { once:true, passive:true });
-    }
-
+    // باز کردن دعوتنامه و تلاش مجدد برای پخش موزیک (در صورت مسدود بودن قبلی)
     function openLetter() {
       envelopeBtn.classList.add('open');
+      
+      // اگر موزیک هنوز پخش نشده، با لمس دکمه دعوتنامه حتماً پلی می‌شود
+      if (!audioUnlocked || audio.paused) {
+        playAudio();
+      }
+
       setTimeout(() => {
         letterModal.classList.add('open');
       }, 320);
@@ -812,6 +809,23 @@
       }, 180);
     }
 
+    // کنترل دستی موزیک از طریق دکمه شناور
+    musicBtn.addEventListener('click', async (e) => {
+      e.stopPropagation(); // جلوگیری از تداخل با رویدادهای بدنه
+      try {
+        if (audio.paused) {
+          await audio.play();
+          musicBtn.classList.add('playing');
+          audioUnlocked = true;
+        } else {
+          audio.pause();
+          musicBtn.classList.remove('playing');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    });
+
     envelopeBtn.addEventListener('click', openLetter);
     closeLetter.addEventListener('click', closeLetterModal);
 
@@ -821,32 +835,27 @@
       }
     });
 
-    musicBtn.addEventListener('click', async () => {
-      try {
-        if (audio.paused) {
-          await audio.play();
-          musicBtn.classList.add('playing');
-        } else {
-          audio.pause();
-          musicBtn.classList.remove('playing');
-        }
-      } catch (e) {}
+    // مدیریت تعامل اولیه کاربر با صفحه برای شروع پخش موزیک
+    const unlockEvents = ['touchstart', 'click', 'scroll'];
+    
+    function handleInteraction() {
+      playAudio();
+    }
+
+    function removeAllInteractions() {
+      unlockEvents.forEach(event => {
+        window.removeEventListener(event, handleInteraction, { passive: true });
+      });
+    }
+
+    // ثبت شنوندگان رویداد برای اولین لمس یا اسکرول
+    unlockEvents.forEach(event => {
+      window.addEventListener(event, handleInteraction, { once: true, passive: true });
     });
 
-    window.addEventListener('DOMContentLoaded', async () => {
-      await autoPlayMusic();
-      enableOnFirstInteraction();
-    });
-
-    window.addEventListener('load', async () => {
-      await autoPlayMusic();
-    });
-
-    document.addEventListener('visibilitychange', async () => {
-      if (!document.hidden && audio.paused) {
-        await autoPlayMusic();
-      }
-    });
+    // تلاش برای پخش خودکار بلافاصله پس از لود شدن
+    window.addEventListener('DOMContentLoaded', playAudio);
+    window.addEventListener('load', playAudio);
   </script>
 </body>
 </html>
